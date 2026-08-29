@@ -11,7 +11,9 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/lib/*.test.ts"
+    "test": "tsx --test src/lib/*.test.ts",
+    "eval:quick": "tsx evals/quick.ts",
+    "eval:compare": "tsx evals/compare-runtimes.ts"
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.30",
