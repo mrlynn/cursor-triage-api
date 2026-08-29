@@ -1,0 +1,8 @@
+node_modules/
+.env
+.env.local
+evals/results/*
+!evals/results/.gitignore
+*.log
+.DS_Store
+dist/

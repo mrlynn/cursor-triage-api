@@ -1,0 +1,9 @@
+{
+  "recorded_at": null,
+  "model": null,
+  "accuracy": null,
+  "passed": 0,
+  "total": 3,
+  "passing_ids": [],
+  "note": "No live baseline yet. Agent runs are slower and costlier than Claude Messages calls, so Lab 0 starts from an empty board. Run `npx tsx evals/quick.ts --save` after your first scored pass."
+}
