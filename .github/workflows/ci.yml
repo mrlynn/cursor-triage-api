@@ -1,0 +1,26 @@
+# CI for the first shippable slice.
+#
+# No live Cursor key is required. Typecheck and the unit suite (Zod parse
+# failure on /v1/triage, authority re-check on resolve) run on every PR,
+# including forks. Agent evals stay a local lab; they are slower and cost
+# more than a Claude Messages call, so they are not a CI gate here.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    name: typecheck and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
