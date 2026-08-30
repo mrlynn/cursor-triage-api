@@ -60,7 +60,7 @@ curl -s localhost:8787/v1/triage -H 'content-type: application/json' -d '{
 Optional: pin a model that `Cursor.models.list()` actually returned:
 
 ```bash
-curl -s 'localhost:8787/v1/triage?model=composer-2.5' ...
+curl -s 'localhost:8787/v1/triage?model=grok-4.6' ...
 ```
 
 If you pass an id that is not in the catalog, the route returns 400
