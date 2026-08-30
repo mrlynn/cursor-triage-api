@@ -33,16 +33,28 @@
  *      the envelope, and the report refuses to difference figures whose bases
  *      differ. Do NOT multiply Claude list prices onto these tokens.
  *
+ * THE MATCHED-MODEL RUN, which is the one worth trusting:
+ *
+ *   npm run eval:compare -- --model claude-opus-5
+ *
+ * `claude-opus-5` is in Cursor's own catalog. Running it here and running it
+ * on the Claude twin holds the MODEL fixed and varies only the primitive,
+ * which is the only version of this comparison that is not confounded. A
+ * default-vs-default run compares grok-4.6 against claude-opus-5 and then
+ * attributes every difference to "the API" — two variables, one conclusion.
+ * Do that run too, by all means, but do not put it on a slide alone.
+ *
  * Usage:
- *   npm run eval:compare
+ *   npm run eval:compare -- --model claude-opus-5    matched: primitive only
+ *   npm run eval:compare                             each side's default
  *   npm run eval:compare -- --repeats 5
- *   npm run eval:compare -- --model composer-2.5
  */
 import "../src/lib/env.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertCredentials } from "../src/lib/agent.js";
+import { estimatedCostUsd } from "../src/lib/usage.js";
 import { app } from "../src/server.js";
 import type { TriageResult } from "../src/schemas.js";
 import { loadCases } from "./lib/score.js";
@@ -111,7 +123,7 @@ interface TriageBody {
   triage: TriageResult;
   meta: {
     model?: { id?: string };
-    usage?: { total_tokens?: number } | null;
+    usage?: Parameters<typeof estimatedCostUsd>[0];
     billed?: { cost?: { charged_usd?: number } | null } | null;
   };
 }
@@ -136,6 +148,9 @@ async function main(): Promise<void> {
 
   const rows: EnvelopeCase[] = [];
   let resolvedModel: string | null = requestedModel;
+  /** Runs we could only price from settled billing, not the published table. */
+  const settledOnly: number[] = [];
+  let assumedCacheWrite = false;
 
   for (let repeat = 1; repeat <= repeats; repeat += 1) {
     for (const testCase of cases) {
@@ -187,10 +202,22 @@ async function main(): Promise<void> {
         failures.push(`remedy: want ${want.requested_remedy}, got ${got.entities.requested_remedy}`);
       }
 
-      // Billed cost settles asynchronously; absence is documented, not a
-      // failure. A null here is carried through to the envelope rather than
-      // defaulted to 0, which would read as "this run was free".
+      // Cost, in the order that keeps the comparison meaningful.
+      //
+      // The LIST-PRICE estimate comes first, because the Claude twin also
+      // prices from a published table and the report can only difference two
+      // costs that share a basis_kind. Settled billing from getUsage() is the
+      // truer number for THIS account, and precisely because it reflects a
+      // plan and its included-usage pools it is not comparable to someone
+      // else's list-price estimate.
+      //
+      // A null is carried through rather than defaulted to 0, which would
+      // read as "this run was free".
+      const listPrice = estimatedCostUsd(body.meta.usage ?? null, body.meta.model?.id);
       const chargedUsd = body.meta.billed?.cost?.charged_usd ?? null;
+      const costUsd = listPrice?.usd ?? null;
+      if (listPrice === null && chargedUsd !== null) settledOnly.push(chargedUsd);
+      if (listPrice?.assumed_cache_write_at_input_rate) assumedCacheWrite = true;
 
       rows.push({
         id: testCase.id,
@@ -201,14 +228,14 @@ async function main(): Promise<void> {
         confidence: got.confidence,
         latency_ms: latency,
         total_tokens: body.meta.usage?.total_tokens ?? null,
-        cost_usd: chargedUsd,
+        cost_usd: costUsd,
         notes: testCase.notes,
       });
 
       console.log(
         `  ${failures.length === 0 ? "PASS" : "FAIL"}  ${testCase.id}  r${repeat}  ` +
           `conf ${got.confidence.toFixed(2)}  ${latency}ms  ` +
-          `${chargedUsd === null ? "cost pending" : `$${chargedUsd.toFixed(5)}`}`,
+          `${costUsd === null ? "unpriced" : `$${costUsd.toFixed(5)}`}`,
       );
       for (const f of failures) console.log(`        ${f}`);
     }
@@ -218,14 +245,24 @@ async function main(): Promise<void> {
   const cost = priced.length
     ? projectCost(
         priced.reduce((a, b) => a + b, 0) / priced.length,
-        "agent.getUsage() chargedCents, converted to USD (settled billing, not an estimate)",
+        `Cursor published list prices for ${resolvedModel ?? "the resolved model"}, ` +
+          `verified 2026-08-30 (src/lib/usage.ts)` +
+          (assumedCacheWrite ? "; cache-write tokens counted at the input rate" : ""),
+        "published_list_price",
       )
-    : null;
+    : settledOnly.length
+      ? projectCost(
+          settledOnly.reduce((a, b) => a + b, 0) / settledOnly.length,
+          "agent.getUsage() chargedCents, converted to USD (settled billing on this account's plan)",
+          "settled_billing",
+        )
+      : null;
 
   if (!cost) {
-    NOT_AVAILABLE.billed_cost_this_run =
-      "agent.getUsage() returned no settled cost while this run was in flight. Cost " +
-      "settles asynchronously; re-run later rather than reading the absence as zero.";
+    NOT_AVAILABLE.cost_this_run =
+      `No published price for "${resolvedModel}" in src/lib/usage.ts, and getUsage() ` +
+      "returned no settled cost while this run was in flight. Add the model to " +
+      "PUBLISHED_PRICES, or re-run later — do not read the absence as zero.";
   }
 
   const metrics = metricsFor(rows, {

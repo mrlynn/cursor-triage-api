@@ -30,7 +30,7 @@ marketing pages.
 | **Rate limits** | Twin reads Anthropic rate-limit headers from the last call | Overview table: Admin / Analytics / Bugbot have numbers. Cloud Agents API: "Standard rate limiting" (no number). Repositories: 1/user/min, 30/user/hour. 429 body documented on the overview | **Partial.** We surface `Cursor.me()` + the published text. We do not invent a remaining-request counter. |
 | **Auth** | `ANTHROPIC_API_KEY` | `CURSOR_API_KEY` - user or service-account key from Dashboard -> API Keys. Basic (`key:`) or Bearer on Cloud Agents REST. Team Admin keys not supported by the SDK | **Maps as "one env var."** Different dashboard, different key types. |
 | **Typed errors** | Anthropic `AuthenticationError`, `RateLimitError`, ... | `AuthenticationError`, `RateLimitError`, `AgentBusyError`, `ConfigurationError`, `NetworkError`, ... all extend `CursorSdkError` | **Maps.** `/v1/resolve` can also see `agent_busy` (cloud 409) which Messages does not have. |
-| **Models** | Twin hardcodes a small Claude catalog + list prices | `Cursor.models.list()` / `GET /v1/models`. Router is `auto-smart` + `optimize_for` only when listed | **Do not copy the other catalog.** |
+| **Models** | Twin hardcodes a small Claude catalog + list prices | `Cursor.models.list()` / `GET /v1/models`. Router is `auto-smart` + `optimize_for` only when listed | **Do not copy the other catalog.** The live one includes third-party entries, `claude-opus-5` among them. |
 | **Vision / images** | Twin accepts a ticket photo as a Messages content block | SDK `send({ text, images })` exists. This slice does not ship the attachment field | Out of scope here. |
 | **No-repo cloud agents** | n/a | `cloud: { repos: [] }` on an enabled account | Later lab. Not required to boot locally. |
 
@@ -68,9 +68,42 @@ not get a free tokenizer.
 **Pick both, side by side,** when the lesson is the difference. That is the
 point of these two repos.
 
+## Costs are comparable now, on one basis
+
+An earlier version of this page said we would not run a cost bake-off because
+Cursor billed only through a usage dashboard. That was wrong. Cursor publishes
+per-token list prices per model, cache-read rate included, at
+[Models & Pricing](https://cursor.com/docs/models-and-pricing) — so both sides
+of this comparison can be priced from a published table and the two estimates
+can honestly be set beside each other. `src/lib/usage.ts` carries that table
+with the date it was verified.
+
+Two cautions survive the correction. A list-price estimate is still not an
+invoice: it excludes plan discounts and included-usage pools, which is why
+`agent.getUsage()` remains the truer number for your own account and why the
+envelope tags each figure with a `basis_kind` rather than letting the report
+subtract one from the other. And on Teams and Enterprise plans a third-party
+model adds a $0.25/MTok Cursor Token Rate on top of its API price — a real
+cost, plan-dependent, and deliberately left out of the list-price estimate.
+
+## The confound worth naming
+
+`claude-opus-5` is in Cursor's catalog. That makes one run possible that no
+amount of argument replaces:
+
+```bash
+npm run eval:compare -- --model claude-opus-5
+```
+
+Run that here and on the twin, and the model is fixed while the primitive
+varies. Compare each side's *default* instead — grok-4.6 here against
+claude-opus-5 there — and two variables move at once while the conclusion
+names only one of them.
+
 ## What this slice will not claim
 
-We did not run a cost bake-off. We did not copy Claude list prices onto
-Cursor tokens. We did not invent a Cloud Agents requests-per-minute number.
-If a later lab measures those, it should check in the command that produced
-the numbers.
+We have not run the bake-off yet, only made it possible. We did not copy
+Claude list prices onto Cursor tokens; the Cursor figures come from Cursor's
+own published table. We did not invent a Cloud Agents requests-per-minute
+number. Every figure that lands here should check in the command that
+produced it.
